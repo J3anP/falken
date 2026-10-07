@@ -1,0 +1,15 @@
+# Binarios
+falken
+*.exe
+*.test
+
+# Archivos de output que genera la herramienta 
+resultado.json
+*.out.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

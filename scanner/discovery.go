@@ -1,0 +1,46 @@
+package scanner
+
+import (
+	"fmt"
+	"net"
+	"sync"
+	"time"
+)
+
+// para determinar si el host esta vivo.
+var discoveryPorts = []int{80, 443, 22, 445, 3389, 8080}
+
+func IsHostAlive(target string, timeoutMs int) bool {
+	timeout := time.Duration(timeoutMs) * time.Millisecond
+	aliveChan := make(chan bool, len(discoveryPorts))
+	var wg sync.WaitGroup
+
+	for _, port := range discoveryPorts {
+		wg.Add(1)
+		go func(p int) {
+			defer wg.Done()
+			address := net.JoinHostPort(target, fmt.Sprintf("%d", p))
+			conn, err := net.DialTimeout("tcp", address, timeout)
+			if err == nil {
+				conn.Close()
+				aliveChan <- true
+				return
+			}
+			if netErr, ok := err.(net.Error); ok && !netErr.Timeout() {
+				aliveChan <- true
+			}
+		}(port)
+	}
+
+	go func() {
+		wg.Wait()
+		close(aliveChan)
+	}()
+
+	for alive := range aliveChan {
+		if alive {
+			return true
+		}
+	}
+	return false
+}

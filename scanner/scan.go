@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -15,18 +16,19 @@ type Result struct {
 }
 
 type ScanReport struct {
-	Target    string    `json:"target"`
-	HostAlive bool      `json:"host_alive"`
-	StartTime time.Time `json:"start_time"`
-	Duration  string    `json:"duration"`
-	OpenPorts []Result  `json:"open_ports"`
+	Target      string    `json:"target"`
+	HostAlive   bool      `json:"host_alive"`
+	StartTime   time.Time `json:"start_time"`
+	Duration    string    `json:"duration"`
+	Interrupted bool      `json:"interrupted,omitempty"`
+	OpenPorts   []Result  `json:"open_ports"`
 }
 
-func RunScan(cfg *Config, ports []int) ScanReport {
+func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 	start := time.Now()
 
 	if !cfg.SkipDiscovery {
-		alive := IsHostAlive(cfg.Target, cfg.Timeout)
+		alive := IsHostAlive(ctx, cfg.Target, cfg.Timeout)
 		if !alive {
 			return ScanReport{
 				Target: cfg.Target, HostAlive: false,
@@ -36,10 +38,11 @@ func RunScan(cfg *Config, ports []int) ScanReport {
 	}
 
 	total := len(ports)
-	jobs := make(chan int, total)     
-	results := make(chan Result, total) 
+	jobs := make(chan int, total)
+	results := make(chan Result, total)
 	var wg sync.WaitGroup
 	var scanned int64
+
 	var limiter <-chan time.Time
 	if cfg.RateLimit > 0 {
 		interval := time.Second / time.Duration(cfg.RateLimit)
@@ -67,36 +70,50 @@ func RunScan(cfg *Config, ports []int) ScanReport {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for port := range jobs {
-				if limiter != nil {
-					<-limiter // bloquea el worker hasta el siguiente tick permitido
+			for {
+				select {
+				case port, ok := <-jobs:
+					if !ok {
+						return
+					}
+					if limiter != nil {
+						select {
+						case <-limiter:
+						case <-ctx.Done():
+							return
+						}
+					}
+					if cfg.UDP {
+						scanPortUDP(ctx, cfg.Target, port, cfg.Timeout, results)
+					} else {
+						scanPortTCP(ctx, cfg.Target, port, cfg.Timeout, cfg.GrabBanners, results)
+					}
+					atomic.AddInt64(&scanned, 1)
+				case <-ctx.Done():
+					return
 				}
-				if cfg.UDP {
-					scanPortUDP(cfg.Target, port, cfg.Timeout, results)
-				} else {
-					scanPortTCP(cfg.Target, port, cfg.Timeout, cfg.GrabBanners, results)
-				}
-				atomic.AddInt64(&scanned, 1)
 			}
 		}()
 	}
 
 	//Productor
 	go func() {
+		defer close(jobs)
 		for _, p := range ports {
-			jobs <- p
+			select {
+			case jobs <- p:
+			case <-ctx.Done():
+				return
+			}
 		}
-		close(jobs)
 	}()
 
-	//Cierre de canales cuando todos los workers terminan
 	go func() {
 		wg.Wait()
 		close(done)
 		close(results)
 	}()
 
-	//Consumidor
 	var open []Result
 	for r := range results {
 		open = append(open, r)
@@ -108,20 +125,30 @@ func RunScan(cfg *Config, ports []int) ScanReport {
 	}
 	fmt.Printf("\r[*] Progreso: %d/%d puertos (100.0%%)\n", total, total)
 
+	interrupted := ctx.Err() != nil
+	if interrupted {
+		LogError("Escaneo interrumpido...")
+	}
+
 	return ScanReport{
-		Target:    cfg.Target,
-		HostAlive: true,
-		StartTime: start,
-		Duration:  time.Since(start).String(),
-		OpenPorts: open,
+		Target:      cfg.Target,
+		HostAlive:   true,
+		StartTime:   start,
+		Duration:    time.Since(start).String(),
+		Interrupted: interrupted,
+		OpenPorts:   open,
 	}
 }
 
-func scanPortTCP(target string, port int, timeoutMs int, grabBanner bool, results chan<- Result) {
+func scanPortTCP(ctx context.Context, target string, port int, timeoutMs int, grabBanner bool, results chan<- Result) {
 	address := fmt.Sprintf("%s:%d", target, port)
-	timeout := time.Duration(timeoutMs)*time.Millisecond
+	timeout := time.Duration(timeoutMs) * time.Millisecond
 
-	conn, err := net.DialTimeout("tcp", address, timeout)
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var d net.Dialer
+	conn, err := d.DialContext(dialCtx, "tcp", address)
 	if err != nil {
 		return
 	}
@@ -129,7 +156,7 @@ func scanPortTCP(target string, port int, timeoutMs int, grabBanner bool, result
 
 	res := Result{Port: port, State: "open"}
 	if grabBanner {
-		res.Service = GrabBanner(target, port, timeoutMs)
+		res.Service = GrabBanner(ctx, target, port, timeoutMs)
 	}
 	results <- res
 }

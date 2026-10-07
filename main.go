@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
 
 	"github.com/J3anP/falken/scanner"
@@ -30,7 +32,10 @@ func main() {
 		scanner.LogInfo("Verificando si el host está activo...")
 	}
 
-	report := scanner.RunScan(cfg, ports)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	report := scanner.RunScan(ctx, cfg, ports)
 
 	if !report.HostAlive {
 		scanner.LogError("Host no responde (usa -Pn para forzar el escaneo igual)")
@@ -56,5 +61,8 @@ func printSummary(report scanner.ScanReport, portsScanned int) {
 	fmt.Printf("  Objetivo:         %s\n", report.Target)
 	fmt.Printf("  Puertos abiertos: %d / %d\n", len(report.OpenPorts), portsScanned)
 	fmt.Printf("  Duración:         %s\n", report.Duration)
+	if report.Interrupted {
+		fmt.Println("  Estado:           interrumpido")
+	}
 	fmt.Println(separator)
 }

@@ -8,11 +8,21 @@ import (
 	"time"
 )
 
-func GrabBanner(target string, port int, timeoutMs int) string {
-	address := fmt.Sprintf("%s:%d", target, port)
-	timeout := time.Duration(timeoutMs) * time.Millisecond
+func GrabBanner(ctx context.Context, target string, port int, timeoutMs int) string {
+	if tlsPorts[port] {
+		if info := GrabTLSInfo(ctx, target, port, timeoutMs); info != "" {
+			return info
+		}
+	}
 
-	conn, err := net.DialTimeout("tcp", address, timeout)
+	address := fmt.Sprintf("%s:%d", target, port)
+	timeout := time.Duration(timeoutMs)*time.Millisecond
+
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var d net.Dialer
+	conn, err := d.DialContext(dialCtx, "tcp", address)
 	if err != nil {
 		return ""
 	}
@@ -26,7 +36,7 @@ func GrabBanner(target string, port int, timeoutMs int) string {
 		return sanitizeBanner(banner)
 	}
 
-	if port == 80 || port == 8080 || port == 8000 || port == 443 {
+	if port == 80 || port == 8080 || port == 8000 {
 		conn.Write([]byte("HEAD / HTTP/1.0\r\n\r\n"))
 		conn.SetDeadline(time.Now().Add(timeout))
 		banner, err = reader.ReadString('\n')

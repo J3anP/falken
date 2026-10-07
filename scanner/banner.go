@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"strings"

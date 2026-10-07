@@ -31,31 +31,6 @@ go build -o falken
 ./falken -t scanme.nmap.org -p top-100 -w 150 -sV -o resultado.json
 ```
 
-Salida esperada:
-
-```
-[*] Objetivo:   scanme.nmap.org
-[*] Puertos:    100 (top-100)
-[*] Workers:    150
-
-[*] Verificando si el host está activo...
-[*] Progreso: 100/100 puertos (100.0%)
-
-[+] 22/tcp abierto — SSH-2.0-OpenSSH_8.2p1 Ubuntu
-[+] 80/tcp abierto — HTTP/1.1 200 OK
-[+] 443/tcp abierto
-
-----------------------------------------------
-  RESUMEN DEL ESCANEO
-----------------------------------------------
-  Objetivo:         scanme.nmap.org
-  Puertos abiertos: 3 / 100
-  Duración:         3.42s
-----------------------------------------------
-
-[+] Resultados exportados a resultado.json
-```
-
 Opciones disponibles:
 
 ```
@@ -65,9 +40,10 @@ Opciones disponibles:
   -o, --output string     Exportar resultado a JSON
       --rate int          Límite de conexiones por segundo (0 = sin límite)
       --timeout int       Timeout de conexión en ms (default 800)
-  -sV                     Detección de servicio/banner
+  -sV                     Detección de servicio/banner (incluye certificados TLS)
   -sU                     Modo UDP en vez de TCP
   -Pn                     Saltar host discovery
+      --waf                Detectar WAF/CDN frente al objetivo (Cloudflare, Akamai, etc.)
 ```
 
 ## Aviso

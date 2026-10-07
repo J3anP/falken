@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,15 @@ type ScanReport struct {
 	OpenPorts   []Result  `json:"open_ports"`
 }
 
+const barWidth = 30
+
+func renderProgressBar(current, total int, open int64) string {
+	pct := float64(current) / float64(total)
+	filled := int(pct * barWidth)
+	bar := strings.Repeat("#", filled) + strings.Repeat(".", barWidth-filled)
+	return fmt.Sprintf("\r[%s] %3.0f%%  %d/%d puertos  %d abiertos", bar, pct*100, current, total, open)
+}
+
 func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 	start := time.Now()
 
@@ -42,6 +52,7 @@ func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 	results := make(chan Result, total)
 	var wg sync.WaitGroup
 	var scanned int64
+	var openCount int64
 
 	var limiter <-chan time.Time
 	if cfg.RateLimit > 0 {
@@ -53,13 +64,14 @@ func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 
 	done := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
+		ticker := time.NewTicker(150 * time.Millisecond)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
 				n := atomic.LoadInt64(&scanned)
-				fmt.Printf("\r[*] Progreso: %d/%d puertos (%.1f%%)", n, total, float64(n)/float64(total)*100)
+				o := atomic.LoadInt64(&openCount)
+				fmt.Print(renderProgressBar(int(n), total, o))
 			case <-done:
 				return
 			}
@@ -96,7 +108,6 @@ func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 		}()
 	}
 
-	//Productor
 	go func() {
 		defer close(jobs)
 		for _, p := range ports {
@@ -117,25 +128,18 @@ func RunScan(ctx context.Context, cfg *Config, ports []int) ScanReport {
 	var open []Result
 	for r := range results {
 		open = append(open, r)
-		if r.Service != "" {
-			LogSuccess("%d/tcp abierto - %s", r.Port, r.Service)
-		} else {
-			LogSuccess("%d/tcp abierto", r.Port)
-		}
+		atomic.AddInt64(&openCount, 1)
 	}
-	fmt.Printf("\r[*] Progreso: %d/%d puertos (100.0%%)\n", total, total)
 
-	interrupted := ctx.Err() != nil
-	if interrupted {
-		LogError("Escaneo interrumpido...")
-	}
+	fmt.Print(renderProgressBar(total, total, atomic.LoadInt64(&openCount)))
+	fmt.Println()
 
 	return ScanReport{
 		Target:      cfg.Target,
 		HostAlive:   true,
 		StartTime:   start,
 		Duration:    time.Since(start).String(),
-		Interrupted: interrupted,
+		Interrupted: ctx.Err() != nil,
 		OpenPorts:   open,
 	}
 }

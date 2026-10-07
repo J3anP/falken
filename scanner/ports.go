@@ -6,6 +6,17 @@ import (
 	"strings"
 )
 
+func DescribePorts(raw string, count int) string {
+	switch {
+	case raw == "top-100":
+		return fmt.Sprintf("%d puertos comunes", count)
+	case count == 1:
+		return "1 puerto"
+	default:
+		return fmt.Sprintf("%d puertos", count)
+	}
+}
+
 var Top100Ports = []int{
 	7, 9, 13, 21, 22, 23, 25, 26, 37, 53, 79, 80, 81, 88, 106, 110, 111, 113,
 	119, 135, 139, 143, 144, 179, 199, 389, 427, 443, 444, 445, 465, 513, 514,

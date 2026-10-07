@@ -17,6 +17,7 @@ type Config struct {
 	GrabBanners   bool // -sV
 	SkipDiscovery bool // -Pn
 	UDP           bool // -sU
+	WAFDetect     bool
 }
 
 func ParseFlags() *Config {
@@ -40,6 +41,8 @@ func ParseFlags() *Config {
 	flag.BoolVar(&cfg.SkipDiscovery, "Pn", false, "Skip host discovery, treat host as alive")
 	flag.BoolVar(&cfg.UDP, "sU", false, "UDP scan mode instead of TCP")
 
+	flag.BoolVar(&cfg.WAFDetect, "waf", false, "Detect WAF/CDN in front of the target via HTTP fingerprinting")
+	
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Uso: %s -t <target> -p <ports> [opciones]\n\n", os.Args[0])
 		flag.PrintDefaults()

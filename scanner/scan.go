@@ -17,12 +17,13 @@ type Result struct {
 }
 
 type ScanReport struct {
-	Target      string    `json:"target"`
-	HostAlive   bool      `json:"host_alive"`
-	StartTime   time.Time `json:"start_time"`
-	Duration    string    `json:"duration"`
-	Interrupted bool      `json:"interrupted,omitempty"`
-	OpenPorts   []Result  `json:"open_ports"`
+	Target      string         `json:"target"`
+	HostAlive   bool           `json:"host_alive"`
+	StartTime   time.Time      `json:"start_time"`
+	Duration    string         `json:"duration"`
+	Interrupted bool           `json:"interrupted,omitempty"`
+	OpenPorts   []Result       `json:"open_ports"`
+	Passive     *PassiveReport `json:"passive_recon,omitempty"`
 }
 
 const barWidth = 30
